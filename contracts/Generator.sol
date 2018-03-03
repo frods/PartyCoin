@@ -8,8 +8,8 @@ import "./Party.sol";
 contract Generator is Owned {
     event PartyStarted(string name, string symbol, address party);
 
-    function createParty(string name, string symbol, uint256 tokenCost) onlyOwner public returns (address) {
-        address newParty = new Party(name, symbol, tokenCost, owner);
+    function createParty(string name, string symbol, uint256 tokenRate) onlyOwner public returns (address) {
+        address newParty = new Party(name, symbol, tokenRate, owner);
         PartyStarted(name, symbol, newParty);
     }
 }

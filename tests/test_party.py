@@ -7,82 +7,49 @@ https://github.com/ethereum/EIPs/blob/master/EIPS/eip-20.md
 
 import pytest
 import ethereum
-from contextlib import contextmanager
+import random
+from helpers import *
 
 DEFAULT_NAME = "Party"
 DEFAULT_SYMBOL = "P"
-DEFAULT_TOKENCOST = 10
+DEFAULT_TOKENRATE = 10
 
-def validate_contract_state( #pylint: disable=invalid-name
-        # Arguments are named after the contract accessor methods
-        contract,
-        name=DEFAULT_NAME,
-        symbol=DEFAULT_SYMBOL,
-        tokenCost=DEFAULT_TOKENCOST,
-        owner=None,
-        generator=None,
-        balances=None):
-    '''
-    Validate contract state using accessor methods.
-
-    balanances: a list if tuples specifying address, value for each balance to be checked
-    '''
-    balances = balances or []
-    assert contract.call().name() == name
-    assert contract.call().symbol() == symbol
-    assert contract.call().tokenCost() == tokenCost
-    if owner:
-        assert contract.call().owner() == owner
-    if generator:
-        assert contract.call().generator() == generator
-    for address, value in balances:
-        assert contract.call().balanceOf(address) == value
+DEFAULT_STATE = {
+    "name": DEFAULT_NAME,
+    "symbol": DEFAULT_SYMBOL,
+    "tokenRate": DEFAULT_TOKENRATE,
+    "partyActive": True,
+}
 
 
-def validate_events(events, expected=None):
-    '''
-    Validate given events
-
-    expected: list of dictionaries specifying events. Only supplied keys are checked so
-        only a subset of the full event need be specified.
-    '''
-    expected = expected or []
-    assert len(events) == len(expected)
-    for index, target in enumerate(expected):
-        event = events[index]
-        for key, value in iter(target.items()):
-            assert event[key] == value
-
-
-@contextmanager
-def verify_balance_change(web3, account, expected_change):
-    '''
-    Track balance trange accross context.
-    Assert that change equals expected change
-    '''
-    original_balance = web3.eth.getBalance(account)
-    yield
-    final_balance = web3.eth.getBalance(account)
-    assert final_balance - original_balance == expected_change
+def validate_contract(contract, **args):
+    validate_contract_state(contract, {**DEFAULT_STATE, **args})
 
 
 @pytest.fixture
 def contract(chain, web3):
     contract, _ = chain.provider.get_or_deploy_contract(
-        'Party', deploy_args=(DEFAULT_NAME, DEFAULT_SYMBOL, DEFAULT_TOKENCOST, web3.eth.coinbase))
+        'Party', deploy_args=(DEFAULT_NAME, DEFAULT_SYMBOL, DEFAULT_TOKENRATE, web3.eth.coinbase))
+    return contract
+
+
+@pytest.fixture
+def closed_contract(contract, chain, web3):
+    close_txn_hash = contract.transact().endParty()
+    txn_result = chain.wait.for_receipt(close_txn_hash)
     return contract
 
 
 def test_create(contract, web3):
-    validate_contract_state(contract, owner=web3.eth.coinbase, generator=web3.eth.coinbase)
+    validate_contract(contract, owner=web3.eth.coinbase, generator=web3.eth.coinbase)
 
 
 def test_buy_zero_tokens(contract, chain, web3):
     buy_txn_hash = contract.transact().buyTokens()
     txn_result = chain.wait.for_receipt(buy_txn_hash)
 
-    assert txn_result.gasUsed == 28432
-    validate_contract_state(
+    assert txn_result.gasUsed == 28783
+    validate_contract(
         contract,
         balances=[(web3.eth.coinbase, 0)])
     
@@ -100,12 +67,11 @@ def test_buy_zero_tokens(contract, chain, web3):
         ]
     )
 
-
 def test_buy_ten_tokens(contract, chain, web3):
     num_tokens = 10
-    ether_ammount = num_tokens * DEFAULT_TOKENCOST
+    ether_ammount = int(num_tokens / DEFAULT_TOKENRATE)
     other_account = web3.eth.accounts[1]
-    gas_cost = 43432
+    gas_cost = 43783
     # Ensure other_account has some ether
     transfer_hash = web3.eth.sendTransaction(
         {"from": web3.eth.coinbase, "to": other_account, "value": ether_ammount})
@@ -115,9 +81,9 @@ def test_buy_ten_tokens(contract, chain, web3):
         with verify_balance_change(web3, contract.address, ether_ammount):
             buy_txn_hash = contract.transact({"from": other_account, "value": ether_ammount}).buyTokens()
             txn_result = chain.wait.for_receipt(buy_txn_hash)
+            assert txn_result.gasUsed == gas_cost
 
-    assert txn_result.gasUsed == gas_cost
-    validate_contract_state(
+    validate_contract(
         contract,
         balances=[(other_account, num_tokens)])
     
@@ -135,12 +101,11 @@ def test_buy_ten_tokens(contract, chain, web3):
         ]
     )
 
-def test_buy_partial_tokens(contract, chain, web3):
-    num_tokens = 10.5
-    extra_ether = 0
-    ether_ammount = int((num_tokens * DEFAULT_TOKENCOST) + extra_ether)
+def test_buy_random_number_tokens(contract, chain, web3):
+    ether_ammount = random.randint(0, 100000000)
+    num_tokens = ether_ammount * DEFAULT_TOKENRATE
     other_account = web3.eth.accounts[1]
-    gas_cost = 43432
+    gas_cost = 43783
     # Ensure other_account has some ether
     transfer_hash = web3.eth.sendTransaction(
         {"from": web3.eth.coinbase, "to": other_account, "value": ether_ammount})
@@ -150,9 +115,9 @@ def test_buy_partial_tokens(contract, chain, web3):
         with verify_balance_change(web3, contract.address, ether_ammount):
             buy_txn_hash = contract.transact({"from": other_account, "value": ether_ammount}).buyTokens()
             txn_result = chain.wait.for_receipt(buy_txn_hash)
+            assert txn_result.gasUsed == gas_cost
 
-    assert txn_result.gasUsed == gas_cost
-    validate_contract_state(
+    validate_contract(
         contract,
         balances=[(other_account, num_tokens)])
     
@@ -169,3 +134,35 @@ def test_buy_partial_tokens(contract, chain, web3):
             }
         ]
     )
+
+
+def test_end_party(contract, chain, web3):
+    close_txn_hash = contract.transact().endParty()
+    txn_result = chain.wait.for_receipt(close_txn_hash)
+    assert txn_result.gasUsed == 28111
+    validate_contract(
+        contract,
+        partyActive=False)
+
+    event_filter = contract.on('PartyFinished')
+    events = event_filter.get()
+
+    validate_events(
+        events,
+        [
+            {'event': 'PartyFinished'}
+        ])
+
+
+def test_buy_party_over(closed_contract, chain, web3):
+    with pytest.raises(ethereum.tester.TransactionFailed):
+        buy_txn_hash = closed_contract.transact().buyTokens()
+
+    validate_contract(
+        closed_contract,
+        partyActive=False)
+    
+    event_filter = closed_contract.on('TokensPurchased')
+    events = event_filter.get()
+
+    validate_events(events)
