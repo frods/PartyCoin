@@ -50,6 +50,11 @@ contract Party is Owned {
     /// End the party and 
     function endParty() public onlyOwner partyOn{
         partyActive = false;
+        // 6% off ether earned goes to the generator of the contract
+        uint256 generatorAmmount = (this.balance * 6) / 100;
+        uint256 ownerAmmount = this.balance - generatorAmmount;
+        owner.transfer(ownerAmmount);
+        generator.transfer(generatorAmmount);
         PartyFinished();
     }
 }

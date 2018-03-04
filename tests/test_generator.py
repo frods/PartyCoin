@@ -33,7 +33,7 @@ def test_createParty(contract, chain, web3):
     createParty_txn_hash = contract.transact().createParty(partyName, partySymbol, partyTokenRate)
     txn_result = chain.wait.for_receipt(createParty_txn_hash)
 
-    assert txn_result.gasUsed == 594865
+    assert txn_result.gasUsed == 648773
 
     event_filter = contract.on('PartyStarted')
     events = event_filter.get()

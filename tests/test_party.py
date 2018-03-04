@@ -136,10 +136,26 @@ def test_buy_random_number_tokens(contract, chain, web3):
     )
 
 
-def test_end_party(contract, chain, web3):
-    close_txn_hash = contract.transact().endParty()
-    txn_result = chain.wait.for_receipt(close_txn_hash)
-    assert txn_result.gasUsed == 28111
+def test_end_party(chain, web3):
+    ether_ammount = 100000;
+    other_account = web3.eth.accounts[1]
+    # Ensure other_account has some ether
+    transfer_hash = web3.eth.sendTransaction(
+        {"from": web3.eth.coinbase, "to": other_account, "value": ether_ammount})
+    chain.wait.for_receipt(transfer_hash)
+    other_account2 = web3.eth.accounts[2]
+
+    contract, _ = chain.provider.get_or_deploy_contract(
+        'Party', deploy_args=(DEFAULT_NAME, DEFAULT_SYMBOL, DEFAULT_TOKENRATE, other_account2))
+
+    buy_ammount = 100
+    buy_txn_hash = contract.transact({"from": other_account, "value": 100}).buyTokens()
+    txn_result = chain.wait.for_receipt(buy_txn_hash)
+
+    with verify_balance_change(web3, other_account2, buy_ammount * 0.06):
+        close_txn_hash = contract.transact().endParty()
+        txn_result = chain.wait.for_receipt(close_txn_hash)
+        assert txn_result.gasUsed == 44472
     validate_contract(
         contract,
         partyActive=False)

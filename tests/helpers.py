@@ -47,4 +47,5 @@ def verify_balance_change(web3, account, expected_change):
     original_balance = web3.eth.getBalance(account)
     yield
     final_balance = web3.eth.getBalance(account)
+    print('change', final_balance - original_balance)
     assert final_balance - original_balance == expected_change
