@@ -16,6 +16,14 @@ def validate_contract_state(contract, state, balances=None):
             assert getattr(contract.call(), key)() == value
 
 
+def _validate_target(target, event):
+    for key, value in iter(target.items()):
+        if isinstance(value, dict):
+            _validate_target(value, event[key])
+        else:
+            assert event[key] == value
+
+
 def validate_events(events, expected=None):
     '''
     Validate given events
@@ -27,8 +35,7 @@ def validate_events(events, expected=None):
     assert len(events) == len(expected)
     for index, target in enumerate(expected):
         event = events[index]
-        for key, value in iter(target.items()):
-            assert event[key] == value
+        _validate_target(target, event)
 
 
 @contextmanager
